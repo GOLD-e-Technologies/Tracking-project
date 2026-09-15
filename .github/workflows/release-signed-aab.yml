@@ -29,7 +29,7 @@ env:
   CI: "1"
   EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
   GOOGLE_MAPS_ANDROID_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_KEY }}
-  EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:38:1D:8F:A1:32:DC"
+  EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC"
   PACKAGE_NAME: com.trackmyrmc.concreteking
   VERSION_CODE: "89"
   VERSION_NAME: "2.0.31"
@@ -44,20 +44,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.candidate_ref || github.ref }}
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20.19.4"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Verify production backend
         shell: bash
         run: |
@@ -66,7 +63,6 @@ jobs:
           grep -F 'healthy' /tmp/health.json >/dev/null
           curl --retry 5 --retry-all-errors --retry-delay 2 -fsS "${EXPO_PUBLIC_BACKEND_URL}/.well-known/assetlinks.json" >/tmp/assetlinks.json
           grep -F "${PACKAGE_NAME}" /tmp/assetlinks.json >/dev/null
-
       - name: Verify required signing secrets
         shell: bash
         run: |
@@ -77,23 +73,18 @@ jobs:
           [ -n "${{ secrets.ANDROID_STORE_PASSWORD }}" ] || missing+=(ANDROID_STORE_PASSWORD)
           [ -n "${{ secrets.ANDROID_KEY_ALIAS }}" ] || missing+=(ANDROID_KEY_ALIAS)
           if [ ${#missing[@]} -gt 0 ]; then echo "Missing required signing secrets: ${missing[*]}"; exit 1; fi
-
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
-
       - name: Run release invariants
         working-directory: frontend
         run: node scripts/check-fresh-production-release.mjs
-
       - name: Run Play policy readiness gate
         working-directory: frontend
         run: node scripts/check-play-policy-readiness.mjs
-
       - name: Generate Android project
         working-directory: frontend
         run: npx expo prebuild --platform android --clean --no-install
-
       - name: Restore upload keystore
         working-directory: frontend/android/app
         env:
@@ -102,7 +93,6 @@ jobs:
           set -euo pipefail
           printf '%s' "$KEYSTORE_B64" | base64 -d > upload-keystore.jks
           test -s upload-keystore.jks
-
       - name: Verify upload certificate
         working-directory: frontend/android/app
         env:
@@ -117,7 +107,6 @@ jobs:
           echo "Upload SHA1: $sha1"
           echo "Upload SHA256: $sha256"
           test "$sha1" = "$EXPECTED_PLAY_UPLOAD_SHA1" || { echo "ERROR: upload certificate does not match Google Play certificate"; exit 1; }
-
       - name: Detect private-key password
         working-directory: frontend/android/app
         env:
@@ -137,7 +126,6 @@ jobs:
             jarsigner -keystore upload-keystore.jks -storepass "$STORE_PASSWORD" -keypass "$STORE_PASSWORD" /tmp/keycheck/probe.jar "$KEY_ALIAS" >/dev/null 2>&1 || { echo "ERROR: private signing key cannot be unlocked"; exit 1; }
             echo KEY_PASSWORD_MODE=store >> "$GITHUB_ENV"
           fi
-
       - name: Build unsigned release AAB
         working-directory: frontend/android
         run: |
@@ -155,7 +143,6 @@ jobs:
           PY
           ./gradlew :app:bundleRelease --no-daemon --stacktrace
           test -s app/build/outputs/bundle/release/app-release.aab
-
       - name: Sign AAB with verified upload key
         working-directory: frontend/android
         env:
@@ -168,7 +155,6 @@ jobs:
           if [ "$KEY_PASSWORD_MODE" = primary ]; then keypass="$KEY_PASSWORD"; else keypass="$STORE_PASSWORD"; fi
           jarsigner -keystore app/upload-keystore.jks -storetype JKS -storepass "$STORE_PASSWORD" -keypass "$keypass" "$aab" "$KEY_ALIAS"
           jarsigner -verify -verbose -certs "$aab"
-
       - name: Validate final AAB
         working-directory: frontend/android
         run: |
@@ -191,7 +177,6 @@ jobs:
           if grep -F 'https://api.trackmyrmc.com' /tmp/index.android.bundle >/dev/null; then echo "Legacy api.trackmyrmc.com origin detected"; exit 1; fi
           echo "AAB_VALIDATION=PASS"
           echo "AAB_SHA256=$(sha256sum "$aab" | awk '{print $1}')"
-
       - name: Upload signed AAB artifact
         uses: actions/upload-artifact@v4
         with:
@@ -199,7 +184,6 @@ jobs:
           path: frontend/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
-
       - name: Authenticate Google Play
         id: auth
         if: ${{ inputs.upload_to_play == true }}
@@ -210,7 +194,6 @@ jobs:
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
           create_credentials_file: true
           cleanup_credentials: true
-
       - name: Upload AAB to Google Play Internal Testing
         if: ${{ inputs.upload_to_play == true }}
         env:
