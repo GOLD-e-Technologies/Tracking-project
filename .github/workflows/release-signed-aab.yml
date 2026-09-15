@@ -33,6 +33,7 @@ env:
   PACKAGE_NAME: com.trackmyrmc.concreteking
   VERSION_CODE: "89"
   VERSION_NAME: "2.0.31"
+  REACT_NATIVE_ARCHITECTURES: "arm64-v8a,x86_64"
 
 jobs:
   build-signed-aab:
@@ -141,7 +142,7 @@ jobs:
           if start < 0 or pos < 0: raise SystemExit('ERROR: release debug signingConfig not found')
           p.write_text(s[:pos]+s[pos+len(marker):])
           PY
-          ./gradlew :app:bundleRelease --no-daemon --stacktrace
+          ./gradlew :app:bundleRelease --no-daemon --stacktrace -PreactNativeArchitectures="$REACT_NATIVE_ARCHITECTURES"
           test -s app/build/outputs/bundle/release/app-release.aab
       - name: Sign AAB with verified upload key
         working-directory: frontend/android
@@ -175,6 +176,29 @@ jobs:
           unzip -p "$aab" "$entry" >/tmp/index.android.bundle
           grep -F 'https://trackmyrmc.com' /tmp/index.android.bundle >/dev/null || { echo "ERROR: canonical production origin missing"; exit 1; }
           if grep -F 'https://api.trackmyrmc.com' /tmp/index.android.bundle >/dev/null; then echo "Legacy api.trackmyrmc.com origin detected"; exit 1; fi
+          python3 - "$aab" <<'PY'
+          import re, subprocess, sys, tempfile, zipfile
+          aab=sys.argv[1]
+          bad=[]
+          with zipfile.ZipFile(aab) as z:
+              libs=[n for n in z.namelist() if n.endswith('.so') and '/base/lib/' in n]
+              for n in libs:
+                  abi=n.split('/')[2]
+                  if abi not in {'arm64-v8a','x86_64'}:
+                      bad.append(f'unexpected ABI: {n}')
+                      continue
+                  with tempfile.NamedTemporaryFile(suffix='.so') as f:
+                      f.write(z.read(n)); f.flush()
+                      out=subprocess.run(['readelf','-l',f.name],capture_output=True,text=True,check=True).stdout.splitlines()
+                  for i,line in enumerate(out):
+                      if line.strip().startswith('LOAD') and i+1 < len(out):
+                          m=re.search(r'(0x[0-9a-fA-F]+)$',out[i+1].strip())
+                          if m and int(m.group(1),16) < 0x4000:
+                              bad.append(f'4KB LOAD alignment: {n} ({m.group(1)})')
+          if bad:
+              print('\n'.join(bad)); raise SystemExit('ERROR: AAB contains native libraries incompatible with 16 KB page-size requirements')
+          print('16KB_NATIVE_ALIGNMENT=PASS')
+          PY
           echo "AAB_VALIDATION=PASS"
           echo "AAB_SHA256=$(sha256sum "$aab" | awk '{print $1}')"
       - name: Upload signed AAB artifact
@@ -221,6 +245,6 @@ jobs:
           PY
           )
           curl -fsS -X PUT -H "Authorization: Bearer ${ACCESS_TOKEN}" -H 'Content-Type: application/json' -d "$body" "${API}/edits/${edit_id}/tracks/internal" >/tmp/play-track.json
-          curl -fsS -X POST -H "Authorization: Bearer ${ACCESS_TOKEN}" -H 'Content-Type: application/json' "${API}/edits/${edit_id}:validate" >/tmp/play-validation.json
-          curl -fsS -X POST -H "Authorization: Bearer ${ACCESS_TOKEN}" -H 'Content-Type: application/json' "${API}/edits/${edit_id}:commit" >/tmp/play-commit.json
+          curl -fsS -X POST -H "Authorization: Bearer ${ACCESS_TOKEN}" -H 'Content-Type: application/json' -d '' "${API}/edits/${edit_id}:validate" >/tmp/play-validation.json
+          curl -fsS -X POST -H "Authorization: Bearer ${ACCESS_TOKEN}" -H 'Content-Type: application/json' -d '' "${API}/edits/${edit_id}:commit" >/tmp/play-commit.json
           echo "GOOGLE PLAY INTERNAL TESTING UPLOAD: SUCCESS"
