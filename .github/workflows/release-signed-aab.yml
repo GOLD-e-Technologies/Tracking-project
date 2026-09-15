@@ -29,7 +29,7 @@ env:
   CI: "1"
   EXPO_PUBLIC_BACKEND_URL: https://trackmyrmc.com
   GOOGLE_MAPS_ANDROID_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_KEY }}
-  EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:74:91:38:1D:8F:A1:32:DC"
+  EXPECTED_PLAY_UPLOAD_SHA1: "3D:5F:80:59:1C:BA:69:1B:03:28:4D:A1:38:1D:8F:A1:32:DC"
   PACKAGE_NAME: com.trackmyrmc.concreteking
   VERSION_CODE: "89"
   VERSION_NAME: "2.0.31"
@@ -150,8 +150,7 @@ jobs:
           start=s.find('release {')
           marker='signingConfig signingConfigs.debug'
           pos=s.find(marker,start)
-          if start < 0 or pos < 0:
-              raise SystemExit('ERROR: release debug signingConfig not found')
+          if start < 0 or pos < 0: raise SystemExit('ERROR: release debug signingConfig not found')
           p.write_text(s[:pos]+s[pos+len(marker):])
           PY
           ./gradlew :app:bundleRelease --no-daemon --stacktrace
@@ -189,10 +188,7 @@ jobs:
           test -n "$entry" || { echo "ERROR: Android JS bundle not found"; exit 1; }
           unzip -p "$aab" "$entry" >/tmp/index.android.bundle
           grep -F 'https://trackmyrmc.com' /tmp/index.android.bundle >/dev/null || { echo "ERROR: canonical production origin missing"; exit 1; }
-          if grep -F 'https://api.trackmyrmc.com' /tmp/index.android.bundle >/dev/null; then
-            echo "Legacy api.trackmyrmc.com origin detected"
-            exit 1
-          fi
+          if grep -F 'https://api.trackmyrmc.com' /tmp/index.android.bundle >/dev/null; then echo "Legacy api.trackmyrmc.com origin detected"; exit 1; fi
           echo "AAB_VALIDATION=PASS"
           echo "AAB_SHA256=$(sha256sum "$aab" | awk '{print $1}')"
 
